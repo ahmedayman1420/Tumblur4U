@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: Modules/Search/Search dashborad/Controller/control.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: Modules/Search/Search dashborad/Controller/control.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/* eslint-disable linebreak-style */
+// ///////////////////////////////////////////////////////////
+// /// &lt;==> /// This File Contains Search Functions /// &lt;==> ///
+// ///////////////////////////////////////////////////////////
+// /**
+//  * Search module
+//  * @module searchDashboard
+//  */
+// /* =============== /// &lt;==> Variables Declaration &lt;==> /// =============== */
+const schema = require('../../../../Model/model');
+const BreakException = {};
+/* ======= /// &lt;==> Calling Connection Function OF Database &lt;==> /// ======== */
+const mongoose = require('mongoose');
+/* =========== /// &lt;==> End &lt;==> ===========*/
+
+async () => {
+  await mongoose.connect(process.env.CONNECTIONSTRING, {}).then(
+      (result) => {
+        console.log('Database Connection Is Done');
+      }).catch(
+      (error) => {
+        console.log('Error In Database Connection');
+      },
+  );
+};
+
+// /* =========== /// &lt;==> End &lt;==> ===========*/
+
+// /* =================== /// &lt;==> Search Functions &lt;==> /// ================ */
+
+/* ----------- &lt;---> AutoComplete Search Dashboard &lt;---> ----------- */
+
+/**
+ * @function
+ * @name  autoCompleteSearchDash
+ * @description Gets interests of the user
+ * @param {String} userEmail -get email of the user
+ *
+ *
+ * @returns {Array} Result array have 2 arrays.
+ *                     - array 1: has the tags followed by the user
+ *                     - array 2: posts for the tags followed by the user
+
+ */
+// use "npm run doc" to make function documentation
+
+const autoCompleteSearchDash = async (userEmail) => {
+  // get userId
+  const user = await schema.users.find({email: userEmail});
+  if (user.isDeleted == true) {
+    return null;
+  }
+
+  const userId = user[0]._id;
+  await schema.users.findOneAndUpdate({$and: [{email: userEmail},
+    {isVerified: true}]}, {isDeleted: false});
+
+  let result = [];
+
+  // if (!wordName || wordName==null ) {
+  // if there's no word then retrieve interested tags
+  const resultFollowedTag=[];
+  const resultPostHashTag=[];
+  // const totalResultPostHashTag=[];
+
+  // gets all posts with the followed tags
+  const searchFollowedTag= await schema.users.find({_id: userId});
+  const searchPostFollowedTag= await schema.Posts.find();
+  // store in result, the blogs
+  searchFollowedTag.forEach(async (data) => {
+    // he gets me the user, now get the followedTags
+    await data.followedTags.forEach(async (followedTag) => {
+      resultFollowedTag.push(followedTag);
+      try {
+        // resultPostHashTag.push(followedTag);
+        searchPostFollowedTag.forEach((dataPosts) => {
+          dataPosts.tags.forEach((tag)=>{
+            if (tag == followedTag) {
+              resultPostHashTag.push(dataPosts);
+              throw BreakException;
+            }
+          });
+        });
+      } catch (e) {
+        // console.log('error..', e);
+        if (e !== BreakException) throw e;
+      }
+      // totalResultPostHashTag.push(resultPostHashTag);
+    });
+  });
+  // console.log('resultPostHashTag: ', resultPostHashTag);
+  result={
+    resultFollowedTag: resultFollowedTag,
+    resultPostHashTag: resultPostHashTag,
+  };
+  return result;
+  // }
+};
+
+/* -------- &lt;---> AutoComplete Search Dashboard with word &lt;---> ----------- */
+
+/**
+ * @function
+ * @name  autoCompleteSearchDashWord
+ * @description Applies search on posts/tags/blogs
+ * @param {String} wordName - Holds the request body: wordName to search with.
+ *
+ *
+ * @return {Array} Result array have 3 arrays.
+ *                     - array 1: has the tags in posts with this regex
+ *                     - array 2: posts with the tags with this regex
+ *                     - array 3: has the blogs this regex
+
+ */
+const autoCompleteSearchDashWord = async (wordName) =>{
+  const regex= new RegExp(wordName, 'i');
+  // gets all posts with the needed tag
+  const searchTags= await schema.Posts.find(tagSpecified={tags: {$in: regex}});
+  // gets all mention blogs with the regex
+  const searchMentionBlogs= await schema.blogs.find({name: regex});
+
+  const resultHashTag=[];
+  const resultBlogs=[];
+  const resultPostHashTag=[];
+
+  const same=[];
+  // store in result, the hash tags
+  // store in result, the posts with hash tags
+  searchTags.forEach((data) => {
+    data.tags.forEach((semiData) => {
+      if (semiData.match(regex)) {
+        if (same.includes(semiData)) {
+          // console.log('then what?');
+        } else {
+          resultHashTag.push(semiData);
+          same.push(semiData);
+        }
+        // console.log('same: ', same);
+        resultPostHashTag.push(data);
+      }
+    });
+  });
+
+  // store in result, the blogs
+  searchMentionBlogs.forEach((data) => {
+    resultBlogs.push(data);
+  });
+
+  // store all results in array and send it to front
+  result={
+    resultHashTag: resultHashTag,
+    resultPostHashTag: resultPostHashTag,
+    resultBlogs: resultBlogs,
+    // resultFollowedTag: resultFollowedTag,
+  };
+  // console.log('resultPostHashTag: ', result.resultHashTag);
+  // res.json(result);
+  return result;
+};
+
+/**
+ * @function
+ * @name  search
+ * @description could be used as a javascript code by front
+ *
+ */
+function search() {
+  $( '#search' ).autocomplete({
+    source: function(req, res) {
+      $.ajax({
+        url: 'localhost:3000/autocomplete/',
+        // dataType:"jsonp",
+        contentType: 'application/json; charset=utf-8',
+        data: req,
+        // dataType: 'text json',
+        success: function(data) {
+          // console.log(data);
+          res(data);
+        },
+        error: function(xhr, err) {
+          const errorMessage = xhr.status + ': ' + xhr.statusText;
+          alert('Error - ' + errorMessage);
+          console.log(err.status);
+        },
+      });
+    },
+
+    minLength: 1,
+    select: function(event, ui) {
+      console.log('fine,now what');
+      if (ui.item) {
+        $( '#search' ).text(ui.item.label);
+      }
+      console.log('fine,now what');
+    },
+  });
+};
+
+// /* =========== /// &lt;==> End &lt;==> ===========*/
+
+// /* ============= /// &lt;==> Export Search Functions &lt;==> /// =============== */
+module.exports = {
+  autoCompleteSearchDash,
+  autoCompleteSearchDashWord,
+  search,
+};
+// /* =========== /// &lt;==> End &lt;==> ===========*/
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#activityFeed">activityFeed</a></li><li><a href="global.html#androidSignUpWithGoogle">androidSignUpWithGoogle</a></li><li><a href="global.html#autoCompleteSearchDash">autoCompleteSearchDash</a></li><li><a href="global.html#autoCompleteSearchDashWord">autoCompleteSearchDashWord</a></li><li><a href="global.html#blockBlog">blockBlog</a></li><li><a href="global.html#changeEmail">changeEmail</a></li><li><a href="global.html#checkBlogName">checkBlogName</a></li><li><a href="global.html#checkMail">checkMail</a></li><li><a href="global.html#checkPassword">checkPassword</a></li><li><a href="global.html#checkPostId">checkPostId</a></li><li><a href="global.html#checkUserId">checkUserId</a></li><li><a href="global.html#createBlog">createBlog</a></li><li><a href="global.html#createGoogleUser">createGoogleUser</a></li><li><a href="global.html#createPost">createPost</a></li><li><a href="global.html#createPrimaryBlog">createPrimaryBlog</a></li><li><a href="global.html#createUser">createUser</a></li><li><a href="global.html#deleteBlog">deleteBlog</a></li><li><a href="global.html#deletePost">deletePost</a></li><li><a href="global.html#deleteUser">deleteUser</a></li><li><a href="global.html#doesFollow">doesFollow</a></li><li><a href="global.html#editBlog">editBlog</a></li><li><a href="global.html#editPost">editPost</a></li><li><a href="global.html#followBlog">followBlog</a></li><li><a href="global.html#forgetPassword">forgetPassword</a></li><li><a href="global.html#forgetPasswordMail">forgetPasswordMail</a></li><li><a href="global.html#getBlogIdFromPostId">getBlogIdFromPostId</a></li><li><a href="global.html#getBlogPosts">getBlogPosts</a></li><li><a href="global.html#getDashboard">getDashboard</a></li><li><a href="global.html#getIdFromToken">getIdFromToken</a></li><li><a href="global.html#getInterests">getInterests</a></li><li><a href="global.html#getLikedPosts">getLikedPosts</a></li><li><a href="global.html#getNotes">getNotes</a></li><li><a href="global.html#getUserIdFromBlogName">getUserIdFromBlogName</a></li><li><a href="global.html#getUserIdFromPostId">getUserIdFromPostId</a></li><li><a href="global.html#google">google</a></li><li><a href="global.html#googleInfo">googleInfo</a></li><li><a href="global.html#isAuthorized">isAuthorized</a></li><li><a href="global.html#isBlocked">isBlocked</a></li><li><a href="global.html#likePress">likePress</a></li><li><a href="global.html#login">login</a></li><li><a href="global.html#loopAndCheck">loopAndCheck</a></li><li><a href="global.html#loopObjAndCheck">loopObjAndCheck</a></li><li><a href="global.html#makePost">makePost</a></li><li><a href="global.html#mongoose">mongoose</a></li><li><a href="global.html#reblogPost">reblogPost</a></li><li><a href="global.html#removeComment">removeComment</a></li><li><a href="global.html#removeReblog">removeReblog</a></li><li><a href="global.html#reportPost">reportPost</a></li><li><a href="global.html#resetPassword">resetPassword</a></li><li><a href="global.html#retrieveBlog">retrieveBlog</a></li><li><a href="global.html#retrieveRandomBlogs">retrieveRandomBlogs</a></li><li><a href="global.html#retrieveRandomPosts">retrieveRandomPosts</a></li><li><a href="global.html#retrieveTrendingPosts">retrieveTrendingPosts</a></li><li><a href="global.html#retrieveUser">retrieveUser</a></li><li><a href="global.html#search">search</a></li><li><a href="global.html#showPost">showPost</a></li><li><a href="global.html#signUp">signUp</a></li><li><a href="global.html#unblockBlog">unblockBlog</a></li><li><a href="global.html#unfollowBlog">unfollowBlog</a></li><li><a href="global.html#updateColor">updateColor</a></li><li><a href="global.html#uploadAny">uploadAny</a></li><li><a href="global.html#uploadImgBase">uploadImgBase</a></li><li><a href="global.html#uploadImgg">uploadImgg</a></li><li><a href="global.html#uploadLocalImg">uploadLocalImg</a></li><li><a href="global.html#uploadStream">uploadStream</a></li><li><a href="global.html#userUnblockBlog">userUnblockBlog</a></li><li><a href="global.html#verfiyAccount">verfiyAccount</a></li><li><a href="global.html#verifyMail">verifyMail</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.7</a> on Sat Jan 01 2022 13:16:04 GMT+0200 (Eastern European Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
